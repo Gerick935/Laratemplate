@@ -29,7 +29,6 @@ class MainController extends Controller
                 $filePath = $file->storeAs('public/uploads/html', $fileName);
             }
         }
-        dd($fileNames);
 
         // Upload des fichiers CSS
         if ($request->hasFile('css_files')) {
@@ -55,38 +54,102 @@ class MainController extends Controller
             }
         }
 
-        // Chemin vers le dossier dans storage
-        $directory = storage_path('app/public/uploads'); // Modifier le chemin selon votre structure
+        foreach ($fileNames as $fileName) {
+            $file = storage_path('app/private/public/uploads/html/'. $fileName);
+            $newFileName = storage_path('app/private/public/uploads/html/'. str_replace('.html', '.blade.php', $fileName));
 
-        // Vérifier si le dossier existe
-        if (!is_dir($directory)) {
-            return response()->json(['message' => 'Le dossier spécifié n\'existe pas'], 404);
+            if (file_exists($file)) {
+
+                $content = file_get_contents($file);
+                
+                $content = preg_replace(
+                    '/<link\s+rel="stylesheet"\s+href="(.*?)"/',
+                    '<link rel="stylesheet" href="{{ asset(\'$1\') }}"',
+                    $content
+                );
+            
+                // Remplacer les liens JS par des directives asset
+                $content = preg_replace(
+                    '/<script\s+src="(.*?)"/',
+                    '<script src="{{ asset(\'$1\') }}"',
+                    $content
+                );
+            
+                // Remplacer les images par des directives asset
+                $content = preg_replace_callback(
+                    '/<img\s+[^>]*src="([^"]+)"/',
+                    function ($matches) {
+                        // Extraire uniquement le nom du fichier et son extension
+                        $pathParts = pathinfo($matches[1]); // pathinfo renvoie un tableau avec dirname, basename, etc.
+                        $fileName = $pathParts['basename']; // Nom du fichier avec l'extension
+                        return '<img src="{{ asset(\'' . $fileName . '\') }}"';
+                    },
+                    $content
+                );
+            
+                // Remplacer les URL par des directives route
+                $content = preg_replace_callback(
+                    '/<a\s+href="(.*?)"/',
+                    function ($matches) {
+                        $url = $matches[1];
+                        if (preg_match('/\.html$/', $url)) {
+                            // Remplacer les fichiers HTML par une route
+                            $routeName = basename($url, '.html');
+                            return '<a href="{{ route(\'' . $routeName . '\') }}"';
+                        }
+                        return $matches[0]; // Conserver les autres URLs telles quelles
+                    },
+                    $content
+                );
+            
+                // Remplacer les attributs action dans les formulaires par des routes
+                $content = preg_replace_callback(
+                    '/<form\s+action="(.*?)"/',
+                    function ($matches) {
+                        $url = $matches[1];
+                        if (preg_match('/\.html$/', $url)) {
+                            $routeName = basename($url, '.html');
+                            return '<form action="{{ route(\'' . $routeName . '\') }}"';
+                        }
+                        return $matches[0];
+                    },
+                    $content
+                );
+            
+                // Ajouter @csrf dans tous les formulaires
+                $content = preg_replace(
+                    '/<form(.*?)>/',
+                    '<form$1>@csrf',
+                    $content
+                );
+
+                file_put_contents($newFileName, $content);
+
+                unlink($file);
+
+                // dd(file_get_contents($newFileName));
+
+                
+            } else {
+                dd("Le fichier n'existe pas");
+            }
         }
 
-        // Récupérer tous les fichiers HTML dans le dossier
-        $files = glob($directory . '/*.html');
-        dd($files);
+        $routes = "<?php
 
-        foreach ($files as $filePath) {
-            // Récupérer le contenu du fichier
-            $content = file_get_contents($filePath);
-
-            // Exemple de modification du contenu
-            $modifiedContent = str_replace('old_string', 'new_string', $content);
-
-            // Changer le nom du fichier et son extension
-            $fileName = pathinfo($filePath, PATHINFO_FILENAME); // Nom sans extension
-            $newFileName = $fileName . '_modified.txt'; // Nouveau nom et extension
-            $newFilePath = $directory . '/' . $newFileName;
-
-            // Sauvegarder le fichier avec le nouveau nom et contenu
-            file_put_contents($newFilePath, $modifiedContent);
-
-            // Supprimer l'ancien fichier (facultatif)
-            unlink($filePath);
+        use Illuminate\Support\Facades\Route;";
+        foreach ($fileNames as $fileName){
+            
+            $routes.= "\n\n        Route::get('/". str_replace('.html', '', $fileName). "', function () {return view('". str_replace('.html', '', $fileName). "');});";
+        }
+        $fileRoute = storage_path('app/private/public/uploads/route/web.php');
+        $directory = dirname($fileRoute);
+        if (!file_exists($directory)) {
+            mkdir($directory, 0755, true);
         }
 
-        return response()->json(['message' => 'Tous les fichiers ont été traités avec succès']);
+        file_put_contents($fileRoute, $routes);
+        dd($routes);
 
         // Retourner les fichiers uploadés ou un message de succès
         return back()->with('success', 'Files uploaded successfully!')->with('uploadedFiles', $uploadedFiles);
