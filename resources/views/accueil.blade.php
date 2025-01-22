@@ -41,7 +41,7 @@
 <body>
     <div class="container py-5">
         <h1 class="text-center mb-4">Upload Your Files</h1>
-        <form action={{ "submit.post"}} method="post" enctype="multipart/form-data" id="dropzoneForm" onsubmit="disableButton()">
+        <form action="{{ route('upload.files') }}" method="post" enctype="multipart/form-data" id="dropzoneForm" onsubmit="disableButton()">
             @csrf
             <div class="row">
                 <!-- HTML Dropzone -->
